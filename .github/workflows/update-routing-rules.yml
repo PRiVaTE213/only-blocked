@@ -1,8 +1,11 @@
 name: update-routing-rules
 
 on:
+  push:
+    branches:
+      - main
   schedule:
-    - cron: '0 3 * * *'
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -35,8 +38,8 @@ jobs:
       - name: Unpack source dat files
         run: |
           mkdir -p /tmp/geosite-all /tmp/geoip-all
-          v2dat unpack geosite -f /tmp/geosite-src.dat -o /tmp/geosite-all/
-          v2dat unpack geoip   -f /tmp/geoip-src.dat   -o /tmp/geoip-all/
+          v2dat unpack geosite -o /tmp/geosite-all/ /tmp/geosite-src.dat
+          v2dat unpack geoip   -o /tmp/geoip-all/   /tmp/geoip-src.dat
           cd /tmp/geosite-all && for f in *; do [ "$f" != "${f,,}" ] && mv "$f" "${f,,}"; done; true
           cd /tmp/geoip-all   && for f in *; do [ "$f" != "${f,,}" ] && mv "$f" "${f,,}"; done; true
 
@@ -44,19 +47,33 @@ jobs:
         run: |
           mkdir -p /tmp/geosite-slim /tmp/geoip-slim
 
-          cp /tmp/geosite-all/private                    /tmp/geosite-slim/
-          cp /tmp/geosite-all/ru-available-only-inside   /tmp/geosite-slim/
-          cp /tmp/geosite-all/ru-blocked                 /tmp/geosite-slim/
-          cp /tmp/geosite-all/category-ads               /tmp/geosite-slim/
+          cp /tmp/geosite-all/geosite-src_private.txt                  /tmp/geosite-slim/private
+          cp /tmp/geosite-all/geosite-src_ru-available-only-inside.txt /tmp/geosite-slim/ru-available-only-inside
+          cp /tmp/geosite-all/geosite-src_ru-blocked.txt               /tmp/geosite-slim/ru-blocked
+          cp /tmp/geosite-all/geosite-src_category-ads-all.txt         /tmp/geosite-slim/category-ads-all
 
-          cp /tmp/geoip-all/private                      /tmp/geoip-slim/
-          cp /tmp/geoip-all/ru-blocked                   /tmp/geoip-slim/
+          cp /tmp/geoip-all/geoip-src_private.txt                      /tmp/geoip-slim/private
+          cp /tmp/geoip-all/geoip-src_ru-blocked.txt                   /tmp/geoip-slim/ru-blocked
 
-      - name: Pack slim dat files
+      - name: Pack slim geosite dat files
         run: |
-          mkdir -p release
-          v2dat pack geosite -o release/geosite.dat /tmp/geosite-slim/*
-          v2dat pack geoip   -o release/geoip.dat   /tmp/geoip-slim/*
+          git clone --depth 1 https://github.com/v2fly/domain-list-community
+          cd domain-list-community
+          mkdir -p ../release
+          go run ./ --datapath=/tmp/geosite-slim/
+          mv dlc.dat ../release/geosite.dat
+          cd ..
+
+      - name: Pack slim geoip dat files
+        run: |
+          git clone --depth 1 https://github.com/v2fly/geoip
+          mkdir -p geoip/config
+          cp /tmp/geoip-slim/ru-blocked  geoip/config/ru-blocked.txt
+          cp geoip-config.json geoip/config.json
+          cd geoip
+          go run ./
+          mv output/geoip.dat ../release/geoip.dat
+          cd ..
 
       - name: Commit if changed
         run: |
